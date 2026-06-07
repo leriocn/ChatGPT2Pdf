@@ -1,0 +1,316 @@
+/* =============================================
+ * ChatGPT to PDF - Popup 样式
+ * Developer: Jeffer SU
+ * ============================================= */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  background: #ffffff;
+  color: #1a1a1a;
+  width: 340px;
+  min-height: 200px;
+}
+
+.container {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 头部 */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.logo {
+  flex-shrink: 0;
+  line-height: 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.header-text h1 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111;
+  letter-spacing: -0.2px;
+}
+
+.header-text .subtitle {
+  font-size: 11px;
+  color: #888;
+  margin-top: 1px;
+}
+
+/* 页面信息卡片 */
+.page-info {
+  background: #f8f9fa;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.page-title-label {
+  font-size: 10px;
+  color: #10a37f;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.page-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #222;
+  line-height: 1.4;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.page-url {
+  font-size: 10px;
+  color: #aaa;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 不支持提示 */
+.unsupported {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  background: #fff8f0;
+  border: 1px solid #ffe0b2;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.unsupported p {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e65100;
+}
+
+.unsupported small {
+  font-size: 11px;
+  color: #888;
+  line-height: 1.6;
+}
+
+/* 模式选择器 */
+.mode-selector {
+  display: flex;
+  gap: 8px;
+}
+
+.mode-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 6px;
+  border: 1.5px solid #e8e8e8;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.mode-option:has(input:checked) {
+  border-color: #10a37f;
+  background: #f0faf7;
+}
+
+.mode-option input {
+  display: none;
+}
+
+.mode-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+}
+
+.mode-desc {
+  font-size: 10px;
+  color: #999;
+}
+
+.mode-option:has(input:checked) .mode-label {
+  color: #10a37f;
+}
+
+/* 导出按钮 */
+.export-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 16px;
+  background: linear-gradient(135deg, #10a37f 0%, #0d8f6e 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(16, 163, 127, 0.3);
+}
+
+.export-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0d8f6e 0%, #0b7a5e 100%);
+  box-shadow: 0 4px 12px rgba(16, 163, 127, 0.4);
+  transform: translateY(-1px);
+}
+
+.export-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(16, 163, 127, 0.3);
+}
+
+.export-btn:disabled {
+  background: linear-gradient(135deg, #ccc 0%, #bbb 100%);
+  cursor: not-allowed;
+  box-shadow: none;
+  opacity: 0.7;
+}
+
+.export-btn.loading {
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.btn-icon {
+  line-height: 0;
+}
+
+/* 状态提示 */
+.status {
+  background: #f0faf7;
+  border: 1px solid #c3e6da;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+/* 取消按钮 */
+.cancel-btn {
+  width: 100%;
+  padding: 8px 16px;
+  background: transparent;
+  color: #999;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cancel-btn:hover {
+  color: #ef4444;
+  border-color: #ef4444;
+  background: #fff5f5;
+}
+
+.status-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-content span {
+  font-size: 12px;
+  color: #0d7a5f;
+  font-weight: 500;
+}
+
+/* 加载动画 */
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(16, 163, 127, 0.3);
+  border-top-color: #10a37f;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 成功提示 */
+.success-msg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f0faf7;
+  border: 1px solid #10a37f;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.success-msg span {
+  font-size: 12px;
+  color: #0d6b50;
+  font-weight: 500;
+}
+
+/* 错误提示 */
+.error-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #fff5f5;
+  border: 1px solid #ffcdd2;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.error-msg span {
+  font-size: 12px;
+  color: #c62828;
+  font-weight: 500;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.error-msg svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* 底部 */
+.footer {
+  text-align: center;
+  font-size: 10px;
+  color: #bbb;
+  padding-top: 4px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.footer .divider {
+  margin: 0 4px;
+}
