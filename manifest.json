@@ -3,6 +3,7 @@
   "name": "ChatGPT to PDF",
   "version": "1.0.0",
   "description": "将 ChatGPT 对话（含图片）一键导出为 PDF 文件，支持自有对话和分享对话。",
+  "homepage_url": "https://github.com/leriocn/ChatGPT2Pdf",
   "author": "Jeffer SU",
   "icons": {
     "16": "icons/icon16.png",
