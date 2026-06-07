@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatGPT to PDF</title>
+  <link rel="stylesheet" href="styles/popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- 头部 -->
+    <div class="header">
+      <div class="logo">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="28" height="28" rx="6" fill="#10a37f"/>
+          <path d="M7 8h14M7 12h14M7 16h10M7 20h8" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+          <circle cx="21" cy="20" r="5" fill="#ff6b35"/>
+          <path d="M19 20l1.5 1.5L23 18.5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="header-text">
+        <h1>ChatGPT to PDF</h1>
+        <p class="subtitle">一键导出对话为 PDF</p>
+      </div>
+    </div>
+
+    <!-- 页面信息 -->
+    <div class="page-info" id="pageInfo">
+      <div class="page-title-label">当前对话</div>
+      <div class="page-title" id="pageTitle">加载中...</div>
+      <div class="page-url" id="pageUrl"></div>
+    </div>
+
+    <!-- 不支持页面提示 -->
+    <div class="unsupported" id="unsupportedMsg" style="display:none;">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" stroke="#ff9800" stroke-width="2"/>
+        <path d="M12 7v6M12 17v.01" stroke="#ff9800" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <p>请在 ChatGPT 对话页面使用此插件</p>
+      <small>支持的页面：<br>chatgpt.com/c/... （自有对话）<br>chatgpt.com/share/... （分享对话）</small>
+    </div>
+
+    <!-- 模式选择 -->
+    <div class="mode-selector" id="modeSelector">
+      <label class="mode-option">
+        <input type="radio" name="exportMode" value="read" checked>
+        <span class="mode-label">直读模式</span>
+        <span class="mode-desc">高清文字+原图</span>
+      </label>
+      <label class="mode-option">
+        <input type="radio" name="exportMode" value="screenshot">
+        <span class="mode-label">截图模式</span>
+        <span class="mode-desc">所见即所得</span>
+      </label>
+      <label class="mode-option">
+        <input type="radio" name="exportMode" value="print">
+        <span class="mode-label">打印模式</span>
+        <span class="mode-desc">浏览器原生 PDF</span>
+      </label>
+    </div>
+
+    <!-- 导出按钮 -->
+    <button class="export-btn" id="exportBtn" disabled>
+      <span class="btn-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2v12m0 0l-4-4m4 4l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="btn-text">导出为 PDF</span>
+    </button>
+
+    <!-- 取消按钮（导出时显示） -->
+    <button class="cancel-btn" id="cancelBtn" style="display:none;">取消导出</button>
+
+    <!-- 状态提示 -->
+    <div class="status" id="status" style="display:none;">
+      <div class="status-content">
+        <div class="spinner" id="spinner"></div>
+        <span id="statusText"></span>
+      </div>
+    </div>
+
+    <!-- 成功提示 -->
+    <div class="success-msg" id="successMsg" style="display:none;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" fill="#10a37f"/>
+        <path d="M8 12l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span id="successText"></span>
+    </div>
+
+    <!-- 错误提示 -->
+    <div class="error-msg" id="errorMsg" style="display:none;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" fill="#ef4444"/>
+        <path d="M15 9l-6 6M9 9l6 6" stroke="white" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span id="errorText"></span>
+    </div>
+
+    <!-- 底部信息 -->
+    <div class="footer">
+      <span>ChatGPT to PDF v1.0.0</span>
+      <span class="divider">·</span>
+      <span>by Jeffer SU</span>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
