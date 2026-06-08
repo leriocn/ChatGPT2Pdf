@@ -3,10 +3,10 @@
  * Developer: Jeffer SU
  *
  * 两种导出模式：
- *   1. 直读模式：边滚动边提取 DOM 内容，文字高清 + 图片原始分辨率
+ *   1. 直读模式：提取 DOM 内容构建完整 HTML，整体渲染后切割分页
  *   2. 截图模式：边滚动边截图，所见即所得
  *
- * 共同策略：滚动到顶部 → 逐屏向下处理 → 拼成 PDF
+ * 策略：收集全部内容 → 构建 HTML → 渲染成 canvas → 切割分页生成 PDF
  *
  * 稳定选择器（只用 data-* 属性和语义标签）：
  *   - section[data-testid^="conversation-turn-"]  → 对话轮次
@@ -21,7 +21,11 @@
 //  取消标志
 // ─────────────────────────────────────────────
 let _cancelled = false;
-
+const _ = (key, ...args) => args.length ? chrome.i18n.getMessage(key, args) : chrome.i18n.getMessage(key);
+const {
+  assertCompleteRender,
+  collectConversationSnapshots
+} = window.ChatGPT2PdfReadModeCore || {};
 // ─────────────────────────────────────────────
 //  消息监听
 // ─────────────────────────────────────────────
@@ -30,6 +34,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     _cancelled = true;
     const wrapper = document.getElementById('__chatgpt2pdf_print__');
     if (wrapper) wrapper.remove();
+    document.getElementById('__chatgpt2pdf_read_document__')?.remove();
+    document.getElementById('__chatgpt2pdf_read_print_css__')?.remove();
     const hide = document.getElementById('__chatgpt2pdf_hide__');
     if (hide) hide.remove();
     sendResponse({ cancelled: true });
@@ -69,7 +75,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 //  工具函数
 // ─────────────────────────────────────────────
 function isSupportedPage() {
-  return /chatgpt\.com\/(c|share)\//.test(window.location.href);
+  return /chatgpt\.com\/(c|share)\//.test(window.location.href) || /chatgpt\.com\/g\/[^/]+\/c\//.test(window.location.href);
 }
 
 function getConversationTitle() {
@@ -83,7 +89,7 @@ function getConversationTitle() {
   }
   const h1 = document.querySelector('h1');
   if (h1?.textContent.trim()) return h1.textContent.trim();
-  return 'ChatGPT对话_' + new Date().toLocaleDateString('zh-CN').replace(/\//g, '-');
+  return _('defaultTitle', [new Date().toISOString().substring(0, 10)]);
 }
 
 function sanitizeFilename(name) {
@@ -117,7 +123,7 @@ function showOverlay(text) {
         <div class="cg2p-spinner"></div>
         <span class="cg2p-text">${text}</span>
       </div>
-      <button class="cg2p-cancel">取消</button>
+      <button class="cg2p-cancel">${_('cancel')}</button>
     </div>
   `;
   _overlayEl.querySelector('.cg2p-cancel').addEventListener('click', () => {
@@ -181,7 +187,7 @@ function showOverlayResult(text) {
   if (!_overlayEl) return;
   _overlayEl.querySelector('.cg2p-spinner').style.display = 'none';
   _overlayEl.querySelector('.cg2p-text').textContent = text;
-  _overlayEl.querySelector('.cg2p-cancel').textContent = '关闭';
+  _overlayEl.querySelector('.cg2p-cancel').textContent = _('close');
   _overlayEl.querySelector('.cg2p-cancel').onclick = hideOverlay;
   setTimeout(hideOverlay, 4000);
 }
@@ -191,7 +197,7 @@ function showOverlayError(text) {
   _overlayEl.querySelector('.cg2p-spinner').style.display = 'none';
   _overlayEl.querySelector('.cg2p-text').textContent = '❌ ' + text;
   _overlayEl.querySelector('.cg2p-text').style.color = '#c62828';
-  _overlayEl.querySelector('.cg2p-cancel').textContent = '关闭';
+  _overlayEl.querySelector('.cg2p-cancel').textContent = _('close');
   _overlayEl.querySelector('.cg2p-cancel').onclick = hideOverlay;
   setTimeout(hideOverlay, 6000);
 }
@@ -201,12 +207,12 @@ function showSASExpiredWarning(count, minutes) {
   if (!_overlayEl) showOverlay('');
   _overlayEl.querySelector('.cg2p-spinner').style.display = 'none';
   const textEl = _overlayEl.querySelector('.cg2p-text');
-  textEl.innerHTML = `⚠️ <b>${count} 张图片签名已过期</b>（${minutes}分钟前）<br><span style="font-size:12px;color:#888">Azure 会拒绝下载，请先刷新页面让 ChatGPT 重新生成链接</span>`;
+  textEl.innerHTML = '⚠️ <b>' + _('sasExpired', [String(count)]) + '</b>' + _('sasExpiredDetail', [String(minutes)]) + '<br><span style="font-size:12px;color:#888">' + _('sasExpiredHelp') + '</span>';
   textEl.style.color = '#b45309';
 
   // 把取消按钮改为“刷新页面”按钮
   const btn = _overlayEl.querySelector('.cg2p-cancel');
-  btn.textContent = '🔄 刷新页面';
+  btn.textContent = '🔄 ' + _('refreshPage');
   btn.style.cssText = 'width:100%;padding:8px;border:none;border-radius:8px;background:#10a37f;color:#fff;font-size:13px;font-weight:600;cursor:pointer;margin-top:4px;';
   btn.onmouseover = () => btn.style.background = '#0d8c6d';
   btn.onmouseout = () => btn.style.background = '#10a37f';
@@ -215,7 +221,7 @@ function showSASExpiredWarning(count, minutes) {
   // 再加一个“取消”链接
   const cancelLink = document.createElement('div');
   cancelLink.style.cssText = 'text-align:center;margin-top:6px;';
-  cancelLink.innerHTML = '<a href="#" style="font-size:11px;color:#999;">取消导出</a>';
+  cancelLink.innerHTML = '<a href="#" style="font-size:11px;color:#999;">' + _('cancelBtn') + '</a>';
   cancelLink.querySelector('a').onclick = (e) => { e.preventDefault(); _cancelled = true; hideOverlay(); };
   btn.parentElement.appendChild(cancelLink);
 }
@@ -318,10 +324,10 @@ function captureTab(retries = 10) {
         if (retries > 0 && isAccessError) {
           const delay = retries > 5 ? 3000 : 1500;
           console.warn(`[ChatGPT2PDF] captureTab 窗口可能最小化，${retries}次重试剩余，等待${delay}ms`);
-          notifyProgress(`浏览器窗口不可见，请恢复窗口（剩余${retries}次重试）...`);
+          notifyProgress(_('windowNotVisible', [String(retries)]));
           setTimeout(() => captureTab(retries - 1).then(resolve, reject), delay);
         } else {
-          reject(new Error(errMsg || '截图失败'));
+          reject(new Error(errMsg || _('screenshotFailed')));
         }
       } else {
         resolve(resp.dataUrl);
@@ -387,7 +393,7 @@ async function fetchImageBase64(url) {
     chrome.runtime.sendMessage({ action: 'fetchImage', url }, resp => {
       if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
       else if (resp?.success) resolve(resp.data);
-      else reject(new Error(resp?.error || '图片加载失败'));
+      else reject(new Error(resp?.error || _('imageLoadFailed')));
     });
   });
 }
@@ -454,8 +460,9 @@ function checkSASExpiry(urls) {
 //  检查第三方库是否就绪（由 manifest content_scripts 自动注入）
 // ─────────────────────────────────────────────
 function ensureLibs() {
-  if (!window.html2canvas) throw new Error('html2canvas 库未加载，请刷新页面重试');
-  if (!window.jspdf) throw new Error('jsPDF 库未加载，请刷新页面重试');
+  if (!window.html2canvas) throw new Error(_('libNotLoaded', ['html2canvas']));
+  if (!window.jspdf) throw new Error(_('libNotLoaded', ['jsPDF']));
+  if (!collectConversationSnapshots || !assertCompleteRender) throw new Error('read-mode-core.js 未加载，请刷新页面重试');
 }
 
 // ═══════════════════════════════════════════════
@@ -464,13 +471,25 @@ function ensureLibs() {
 //  按 data-testid 排序去重
 // ═══════════════════════════════════════════════
 async function exportByReadMode() {
+  // ★ 先滚动到顶部，确保虚拟滚动加载全部内容
+  notifyProgress(_('rollingToTop'));
+  window.scrollTo(0, 0);
   const container = findScrollContainer();
+  const useWindow = (container === document.documentElement || container === document.body);
+  const scrollTo = (y) => {
+    if (useWindow) window.scrollTo(0, y);
+    else container.scrollTop = y;
+  };
+  for (let i = 0; i < 15; i++) {
+    scrollTo(0);
+    window.scrollTo(0, 0);
+    await sleep(300);
+    const st = useWindow ? (window.scrollY || document.documentElement.scrollTop || 0) : container.scrollTop;
+    if (st === 0) break;
+  }
+  await sleep(1500); // 等待虚拟滚动/懒加载内容恢复
 
-  notifyProgress('正在滚动到对话开头...');
-  await scrollToTop(container);
-  if (_cancelled) return null;
-
-  // ★ 快速预扫描：先检查图片 SAS 是否过期，避免浪费时间滚动收集
+  // ★ 快速预扫描：先检查图片 SAS 是否过期
   const preScanURLs = new Set();
   document.querySelectorAll('source[srcset]').forEach(source => {
     const srcset = source.getAttribute('srcset') || '';
@@ -493,126 +512,174 @@ async function exportByReadMode() {
     console.log(`[ChatGPT2PDF] 预扫描通过: ${preScanURLs.size} 个图片 SAS 均未过期`);
   }
 
-  notifyProgress('正在逐屏收集对话内容...');
+  notifyProgress(_('collectingContent'));
 
-  const collected = new Map(); // key: data-testid → { role, html, imageURLs }
-  const viewHeight = container.clientHeight;
-  let pos = 0;
-
-  while (true) {
-    if (_cancelled) return null;
-
-    container.scrollTop = pos;
-    await sleep(120);  // ★ 加快滚动速度（原 350ms → 120ms）
-
-    const sections = document.querySelectorAll('section[data-testid^="conversation-turn-"]');
-    sections.forEach(section => {
-      const testid = section.getAttribute('data-testid');
-      if (collected.has(testid)) return;
-
-      const msgEl = section.querySelector('div[data-message-author-role]');
-      const role = msgEl?.getAttribute('data-message-author-role') || 'assistant';
-
-      // ★ 在 section 级别收集所有 ChatGPT 图片（URL + 直接提取 base64）
-      const imageURLs = [];
-      const imageData = []; // {url, base64}
-      const seenURLs = new Set();
-
-      // 辅助：尝试从 <img> 元素直接提取 base64
-      function tryExtractBase64(img) {
-        if (!img.complete || img.naturalWidth === 0) return null;
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
-          canvas.getContext('2d').drawImage(img, 0, 0);
-          const dataUrl = canvas.toDataURL('image/png');
-          return (dataUrl && dataUrl.length > 200) ? dataUrl : null;
-        } catch (e) {
-          // 跨域图片未设置 crossOrigin，canvas 被污染，toDataURL 抛 SecurityError
-          if (!window.__cg2p_canvas_warned) {
-            console.warn('[ChatGPT2PDF] canvas 提取失败（tainted）:', e.name, e.message, '→ 将走 fetch 降级');
-            window.__cg2p_canvas_warned = true;
-          }
-          return null;
-        }
+  // 辅助：尝试从 <img> 元素直接提取 base64
+  function tryExtractBase64(img) {
+    if (!img.complete || img.naturalWidth === 0) return null;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      const dataUrl = canvas.toDataURL('image/png');
+      return (dataUrl && dataUrl.length > 200) ? dataUrl : null;
+    } catch (e) {
+      if (!window.__cg2p_canvas_warned) {
+        console.warn('[ChatGPT2PDF] canvas 提取失败（tainted）:', e.name, e.message, '→ 将走 fetch 降级');
+        window.__cg2p_canvas_warned = true;
       }
+      return null;
+    }
+  }
 
-      // 从 <img> 收集 + 直接提取
-      section.querySelectorAll('img').forEach(img => {
-        const src = img.getAttribute('src') || img.src || '';
-        if (!isChatGPTImage(src)) return;
-        if (img.closest('[class*="blur"]')) return;
-        const base = src.split('?')[0];
-        if (seenURLs.has(base)) return;
-        seenURLs.add(base);
-        imageURLs.push(src);
-        imageData.push({ url: src, base64: tryExtractBase64(img) });
-      });
+  const hashText = value => {
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  };
 
-      // ★ 从 <source srcset="..."> 收集（ChatGPT 用 <picture> 包裹图片）
-      section.querySelectorAll('source[srcset]').forEach(source => {
-        const srcset = source.getAttribute('srcset') || '';
-        const firstUrl = srcset.split(',')[0].trim().split(/\s+/)[0];
-        if (!isChatGPTImage(firstUrl)) return;
-        const base = firstUrl.split('?')[0];
-        if (seenURLs.has(base)) return;
-        seenURLs.add(base);
-        imageURLs.push(firstUrl);
-        // 找到同一个 <picture> 中的 <img> 并提取
-        const picture = source.closest('picture');
-        const imgEl = picture ? picture.querySelector('img') : null;
-        imageData.push({ url: firstUrl, base64: imgEl ? tryExtractBase64(imgEl) : null });
-      });
+  const getVisibleTurns = () => {
+    const turnEls = Array.from(document.querySelectorAll(
+      'section[data-testid^="conversation-turn-"], article[data-testid^="conversation-turn-"]'
+    ));
+    if (turnEls.length > 0) return turnEls;
 
-      // ★ 从 background-image 收集
-      section.querySelectorAll('[style]').forEach(el => {
-        const bg = el.style.backgroundImage || '';
-        const match = bg.match(/url\(["']?([^"')]+)["']?\)/);
-        if (match && isChatGPTImage(match[1])) {
-          const base = match[1].split('?')[0];
-          if (!seenURLs.has(base)) {
-            seenURLs.add(base);
-            imageURLs.push(match[1]);
-            imageData.push({ url: match[1], base64: null });
-          }
-        }
-      });
+    const fallback = new Set();
+    document.querySelectorAll('[data-message-author-role]').forEach(msgEl => {
+      fallback.add(msgEl.closest('section, article, [data-testid^="conversation-turn-"]') || msgEl);
+    });
+    return Array.from(fallback);
+  };
 
-      // 整体克隆 msgEl（保留所有子内容在原始顺序）
-      let cloned = null;
-      if (msgEl) {
-        cloned = msgEl.cloneNode(true);
-        // 清理交互元素
-        cloned.querySelectorAll('button,[role="button"],[data-testid*="action"],[data-testid*="button"],form,input,textarea').forEach(e => e.remove());
-        // ★ 移除所有 img 标签（克隆后的 src 是 blob: URL，无法匹配原始 URL）
-        // 图片会在构建阶段从已下载的 base64 数据中单独添加
-        cloned.querySelectorAll('img').forEach(e => e.remove());
-      }
+  const snapshotTurn = (section, visibleIndex) => {
+    const msgEl = section.matches?.('[data-message-author-role]')
+      ? section
+      : section.querySelector('[data-message-author-role]');
+    const role = msgEl?.getAttribute('data-message-author-role') || 'assistant';
 
-      collected.set(testid, {
-        role,
-        html: cloned ? cloned.innerHTML : '',
-        imageURLs,
-        imageData
-      });
+    const imageURLs = [];
+    const imageData = [];
+    const seenURLs = new Set();
+
+    section.querySelectorAll('img').forEach(img => {
+      const src = img.getAttribute('src') || img.src || '';
+      const isLargeMessageImage = !img.closest('button,[role="button"]')
+        && img.naturalWidth >= 64 && img.naturalHeight >= 64;
+      const isInlineMessageImage = src.startsWith('blob:') || src.startsWith('data:image/');
+      const isRemoteMessageImage = /^https?:/i.test(src);
+      if ((!isChatGPTImage(src) && !(isLargeMessageImage && (isInlineMessageImage || isRemoteMessageImage)))
+          || img.closest('[class*="blur"]')) return;
+      const base = src.split('?')[0];
+      if (seenURLs.has(base)) return;
+      seenURLs.add(base);
+      imageURLs.push(src);
+      imageData.push({ url: src, base64: src.startsWith('data:image/') ? src : tryExtractBase64(img) });
     });
 
-    const maxScroll = container.scrollHeight - container.clientHeight;
-    if (pos >= maxScroll) break;
-    pos = Math.min(pos + viewHeight * 0.85, maxScroll);  // ★ 每步滚动 85%（原 70%）
+    section.querySelectorAll('source[srcset]').forEach(source => {
+      const srcset = source.getAttribute('srcset') || '';
+      const firstUrl = srcset.split(',')[0].trim().split(/\s+/)[0];
+      if (!isChatGPTImage(firstUrl)) return;
+      const base = firstUrl.split('?')[0];
+      if (seenURLs.has(base)) return;
+      seenURLs.add(base);
+      imageURLs.push(firstUrl);
+      const imgEl = source.closest('picture')?.querySelector('img');
+      imageData.push({ url: firstUrl, base64: imgEl ? tryExtractBase64(imgEl) : null });
+    });
 
-    notifyProgress(`正在收集内容... (${collected.size} 条消息)`);
-  }
+    section.querySelectorAll('[style]').forEach(el => {
+      const match = (el.style.backgroundImage || '').match(/url\(["']?([^"')]+)["']?\)/);
+      if (!match || !isChatGPTImage(match[1])) return;
+      const base = match[1].split('?')[0];
+      if (seenURLs.has(base)) return;
+      seenURLs.add(base);
+      imageURLs.push(match[1]);
+      imageData.push({ url: match[1], base64: null });
+    });
+
+    const cloned = (msgEl || section).cloneNode(true);
+    const canonicalImageURLs = new Map(imageURLs.map(url => [url.split('?')[0], url]));
+    cloned.querySelectorAll('button,[role="button"],[data-testid*="action"],[data-testid*="button"],form,input,textarea').forEach(e => e.remove());
+    cloned.querySelectorAll('img').forEach(img => {
+      const src = img.getAttribute('src') || img.src || '';
+      const canonical = canonicalImageURLs.get(src.split('?')[0]);
+      if (canonical) img.setAttribute('data-cg2p-src', canonical);
+    });
+    cloned.querySelectorAll('source[srcset]').forEach(source => {
+      const srcset = source.getAttribute('srcset') || '';
+      const firstUrl = srcset.split(',')[0].trim().split(/\s+/)[0];
+      const img = source.closest('picture')?.querySelector('img');
+      const canonical = canonicalImageURLs.get(firstUrl.split('?')[0]);
+      if (img && canonical) img.setAttribute('data-cg2p-src', canonical);
+    });
+    cloned.querySelectorAll('img:not([data-cg2p-src])').forEach(img => img.remove());
+
+    const textContent = cloned.textContent?.replace(/\s+/g, ' ').trim() || '';
+    if (textContent.length === 0 && imageURLs.length === 0) return null;
+
+    const stableId = section.getAttribute('data-testid')
+      || section.getAttribute('data-message-id')
+      || msgEl?.getAttribute('data-message-id')
+      || `cg2p-${role}-${hashText(`${textContent}|${imageURLs.join('|')}`)}`;
+    const orderMatch = stableId.match(/conversation-turn-(\d+)/);
+
+    return {
+      id: stableId,
+      order: orderMatch ? Number(orderMatch[1]) : Number.MAX_SAFE_INTEGER,
+      discoveryIndex: visibleIndex,
+      role,
+      html: cloned.innerHTML,
+      textLength: textContent.length,
+      imageURLs,
+      imageData
+    };
+  };
+
+  const scrollContainer = findScrollContainer();
+  const useWin = (scrollContainer === document.documentElement || scrollContainer === document.body);
+  const viewH = useWin ? window.innerHeight : scrollContainer.clientHeight;
+  const scrollToY = (y) => {
+    if (useWin) window.scrollTo(0, y);
+    else scrollContainer.scrollTop = y;
+  };
+  const getScrollY = () => useWin ? (window.scrollY || document.documentElement.scrollTop || 0) : scrollContainer.scrollTop;
+  const getMaxScrollY = () => {
+    const totalH = useWin ? Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) : scrollContainer.scrollHeight;
+    return Math.max(0, totalH - viewH);
+  };
+
+  const collected = await collectConversationSnapshots({
+    getVisibleTurns,
+    snapshotTurn,
+    getPosition: getScrollY,
+    getMaxPosition: getMaxScrollY,
+    getViewportHeight: () => viewH,
+    scrollTo: scrollToY,
+    wait: sleep,
+    isCancelled: () => _cancelled,
+    onProgress: ({ count, position, maxPosition }) => {
+      console.log(`[ChatGPT2PDF] 滚动收集: ${count} 个 turn, ${Math.round(position)}/${Math.round(maxPosition)}`);
+      notifyProgress(_('collectingProgress', [String(count)]));
+    }
+  });
+  if (!collected || _cancelled) return null;
 
   // 按 conversation-turn-N 的 N 排序
   const sorted = [...collected.entries()].sort((a, b) => {
-    const numA = parseInt(a[0].replace('conversation-turn-', '')) || 0;
-    const numB = parseInt(b[0].replace('conversation-turn-', '')) || 0;
-    return numA - numB;
+    return a[1].order - b[1].order;
   });
+  if (sorted.length === 0) {
+    throw new Error('未采集到任何对话内容，已停止导出');
+  }
 
-  notifyProgress(`正在下载图片 (${sorted.length} 条消息)...`);
+  console.log(`[ChatGPT2PDF] 实际收集到 ${sorted.length} 个非空 turn`);
+
+  notifyProgress(_('downloadingImages', [String(sorted.length)]));
 
   // ★ 并行下载所有图片（提升速度）
   const allImageURLs = [];
@@ -664,7 +731,7 @@ async function exportByReadMode() {
 
   // 降级 1：在页面 MAIN world 中 fetch（origin=chatgpt.com，无 CORS 问题）
   if (failedCount > 0) {
-    notifyProgress(`${downloadedCount} 张已提取，${failedCount} 张走页面 fetch...`);
+    notifyProgress(_('fetchInPage', [String(downloadedCount), String(failedCount)]));
     const failedURLs = allImageURLs.filter(src => !imageBase64Map.has(src));
     const pageMap = await fetchImagesInPageWorld(failedURLs);
     for (const [url, dataUrl] of pageMap) {
@@ -677,7 +744,7 @@ async function exportByReadMode() {
 
   // 降级 2：背景 service worker 下载
   if (failedCount > 0) {
-    notifyProgress(`${downloadedCount} 张已提取，${failedCount} 张尝试 background 下载...`);
+    notifyProgress(_('fetchInBackground', [String(downloadedCount), String(failedCount)]));
     const failedURLs = allImageURLs.filter(src => !imageBase64Map.has(src));
     const fallbackResults = await Promise.allSettled(
       failedURLs.map(src => fetchImageBase64(src))
@@ -694,23 +761,74 @@ async function exportByReadMode() {
   }
 
   console.log(`[ChatGPT2PDF] 图片提取最终结果: 成功=${downloadedCount}, 失败=${failedCount}`);
-  notifyProgress(`图片完成: ${downloadedCount}/${allImageURLs.length} 成功${failedCount > 0 ? ', ' + failedCount + ' 失败' : ''}`);
+  notifyProgress(_('imagesComplete', [String(downloadedCount), String(allImageURLs.length), failedCount > 0 ? _('imagesFailedSuffix', [String(failedCount)]) : '']));
+  if (failedCount > 0) {
+    throw new Error(`${failedCount} 张图片无法读取，已停止导出以避免生成不完整 PDF`);
+  }
 
-  notifyProgress('正在构建文档...');
-
-  // 构建打印容器
-  const wrapper = document.createElement('div');
-  wrapper.id = '__chatgpt2pdf_print__';
-  wrapper.style.cssText = [
-    'position:fixed', 'top:0', 'left:0',
-    'width:794px', 'background:#ffffff', 'color:#1a1a1a',
-    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif',
-    'font-size:14px', 'line-height:1.6',
-    'padding:40px 48px', 'box-sizing:border-box',
-    'z-index:999999', 'overflow:visible'
-  ].join(';');
+  notifyProgress(_('buildingDoc'));
 
   let totalImagesAdded = 0;
+  const turnDivs = [];
+  const expectedImageCount = sorted.reduce((sum, [, turn]) => sum + turn.imageURLs.length, 0);
+
+  const createCompressedImage = async base64 => {
+    const loadedImg = await new Promise((resolve, reject) => {
+      const tmpImg = new Image();
+      const timer = setTimeout(() => reject(new Error(_('imageLoadFailed'))), 10000);
+      tmpImg.onload = () => {
+        clearTimeout(timer);
+        resolve(tmpImg);
+      };
+      tmpImg.onerror = () => {
+        clearTimeout(timer);
+        reject(new Error(_('imageLoadFailed')));
+      };
+      tmpImg.src = base64;
+    });
+
+    const MAX_DIM = 800;
+    let w = loadedImg.naturalWidth;
+    let h = loadedImg.naturalHeight;
+    if (w > MAX_DIM) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
+    if (h > MAX_DIM) { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
+
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width = w;
+    tmpCanvas.height = h;
+    const ictx = tmpCanvas.getContext('2d');
+    ictx.fillStyle = '#ffffff';
+    ictx.fillRect(0, 0, w, h);
+    ictx.drawImage(loadedImg, 0, 0, w, h);
+
+    const img = document.createElement('img');
+    img.src = tmpCanvas.toDataURL('image/jpeg', 0.85);
+    img.style.cssText = 'max-width:100%;height:auto;border-radius:8px;display:block;';
+    img.width = w;
+    img.height = h;
+    return img;
+  };
+
+  const replaceImageWithCleanBlock = (originalImg, replacementImg, contentRoot) => {
+    let replaceTarget = originalImg;
+    let parent = originalImg.parentElement;
+
+    while (parent && parent !== contentRoot) {
+      const text = (parent.textContent || '').replace(/\s+/g, ' ').trim();
+      const imageCount = parent.querySelectorAll('img').length;
+      const preservesStructure = parent.matches('td,th,li,table,pre,code,blockquote');
+      if (text || imageCount !== 1 || preservesStructure) break;
+      replaceTarget = parent;
+      parent = parent.parentElement;
+    }
+
+    const imageBlock = document.createElement('div');
+    imageBlock.className = 'cg2p-image-block';
+    imageBlock.dataset.cg2pImageBlock = 'true';
+    imageBlock.style.cssText = 'display:block;width:100%;height:auto;min-height:0;max-height:none;margin:10px 0;padding:0;position:static;transform:none;aspect-ratio:auto;overflow:visible;';
+    imageBlock.appendChild(replacementImg);
+    replaceTarget.replaceWith(imageBlock);
+  };
 
   for (const [testid, { role, html, imageURLs }] of sorted) {
     // ★ 跳过空章节
@@ -723,20 +841,21 @@ async function exportByReadMode() {
         .replace(/\bGPT-4o?\w*\b/gi, '')   // 去模型名
         .replace(/\s+/g, ' ').trim();
     }
-    const hasContent = meaningfulText.length > 3; // 至少4个有效字符才算有内容
+    const hasContent = meaningfulText.length > 0; // 只要有文本就保留（避免短内容被过滤）
     const hasImages = imageURLs.length > 0;
     if (!hasContent && !hasImages) continue;
 
     const turnDiv = document.createElement('div');
+    turnDiv.dataset.cg2pTurnId = testid;
     turnDiv.style.cssText = 'margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #f0f0f0;';
 
     // 角色标签
     const label = document.createElement('div');
     label.style.cssText = `font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;color:${role === 'user' ? '#10a37f' : '#666'};`;
-    label.textContent = role === 'user' ? '用户' : 'ChatGPT';
+    label.textContent = role === 'user' ? _('roleUser') : _('roleAssistant');
     turnDiv.appendChild(label);
 
-    // 文本内容
+    // 文本内容（图片保留在原始位置）
     if (html && hasContent) {
       const contentDiv = document.createElement('div');
       contentDiv.style.cssText = role === 'user'
@@ -744,153 +863,188 @@ async function exportByReadMode() {
         : 'word-break:break-word;';
       contentDiv.innerHTML = html;
 
-      applyInlineStyles(contentDiv);
-      turnDiv.appendChild(contentDiv);
-    }
-
-    // ★ 图片处理：加载 → 压缩 → 转 JPEG data URL → 放小尺寸 <img>
-    //   html2canvas 只看到小 JPEG（几十KB），不会崩溃
-    for (const src of imageURLs) {
-      const base64 = imageBase64Map.get(src);
-      if (!base64) continue;
-
-      const imgDiv = document.createElement('div');
-      imgDiv.style.cssText = 'margin:12px 0;';
-
-      try {
-        // 1. 加载原始图片
-        const loadedImg = await new Promise((resolve, reject) => {
-          const tmpImg = new Image();
-          tmpImg.onload = () => resolve(tmpImg);
-          tmpImg.onerror = () => reject(new Error('图片加载失败'));
-          tmpImg.src = base64;
-          setTimeout(() => reject(new Error('图片加载超时')), 10000);
-        });
-
-        // 2. 等比压缩到 800px 内
-        const MAX_DIM = 800;
-        let w = loadedImg.naturalWidth;
-        let h = loadedImg.naturalHeight;
-        if (w > MAX_DIM) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
-        if (h > MAX_DIM) { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
-
-        // 3. 画到临时 canvas → 导出 JPEG（85% 质量）
-        const tmpCanvas = document.createElement('canvas');
-        tmpCanvas.width = w;
-        tmpCanvas.height = h;
-        const ictx = tmpCanvas.getContext('2d');
-        ictx.fillStyle = '#ffffff';
-        ictx.fillRect(0, 0, w, h);
-        ictx.drawImage(loadedImg, 0, 0, w, h);
-        const jpegUrl = tmpCanvas.toDataURL('image/jpeg', 0.85);
-        console.log(`[ChatGPT2PDF] 图片压缩: ${loadedImg.naturalWidth}x${loadedImg.naturalHeight} → ${w}x${h}, JPEG=${Math.round(jpegUrl.length/1024)}KB`);
-
-        // 4. 放入小尺寸 <img>（html2canvas 只看到这个 JPEG）
-        const img = document.createElement('img');
-        img.src = jpegUrl;
-        img.style.cssText = 'max-width:100%;height:auto;border-radius:8px;display:block;';
-        img.width = w;
-        img.height = h;
-        imgDiv.appendChild(img);
-        totalImagesAdded++;
-      } catch (err) {
-        console.warn('[ChatGPT2PDF] 图片处理失败:', src.substring(0, 60), err.message);
-        const placeholder = document.createElement('div');
-        placeholder.style.cssText = 'padding:20px;background:#f5f5f5;color:#999;text-align:center;border-radius:8px;';
-        placeholder.textContent = '⚠️ 图片加载失败';
-        imgDiv.appendChild(placeholder);
-      }
-      turnDiv.appendChild(imgDiv);
-    }
-
-    wrapper.appendChild(turnDiv);
-  }
-
-  console.log(`[ChatGPT2PDF] 构建完成: ${sorted.length} 个章节, ${totalImagesAdded} 张图片已添加到 wrapper`);
-  notifyProgress(`构建文档完成: ${sorted.length} 章节, ${totalImagesAdded} 图片`);
-
-  // 清除 oklch + 强制白底黑字
-  stripOklchColors(wrapper);
-  forceWhiteBackground(wrapper);
-  wrapper.style.backgroundColor = '#ffffff';
-  wrapper.style.color = '#1a1a1a';
-  document.body.appendChild(wrapper);
-
-  // wrapper 内的图片已在构建阶段压缩为 JPEG，无需等待
-  await sleep(200);
-  notifyProgress('正在逐段渲染...');
-
-  // ★ 逐段渲染：每个 turnDiv 单独 html2canvas
-  //   好处：1) 内存小（每次只渲染一段）2) 失败隔离（一段出错不影响其他）
-  const turnDivs = Array.from(wrapper.children);
-  const sectionCanvases = []; // {canvas, index}
-  const oncloneSafeCSS = (doc) => {
-    doc.querySelectorAll('style, link[rel="stylesheet"]').forEach(e => e.remove());
-    const style = doc.createElement('style');
-    style.textContent = `
-      html, body { background: #ffffff !important; color: #1a1a1a !important; margin: 0 !important; padding: 0 !important; }
-      #__chatgpt2pdf_print__ { background: #ffffff !important; color: #1a1a1a !important;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif !important;
-        font-size: 14px !important; line-height: 1.6 !important; }
-      #__chatgpt2pdf_print__ * { color: inherit !important; }
-      #__chatgpt2pdf_print__ pre { background: #1e1e2e !important; color: #cdd6f4 !important;
-        border-radius: 8px !important; padding: 14px 16px !important;
-        font-family: "Courier New", Consolas, monospace !important; font-size: 12px !important;
-        line-height: 1.55 !important; white-space: pre-wrap !important; word-break: break-all !important;
-        margin: 10px 0 !important; display: block !important; overflow: visible !important; }
-      #__chatgpt2pdf_print__ pre code { color: #cdd6f4 !important; background: transparent !important;
-        padding: 0 !important; font-family: "Courier New", Consolas, monospace !important; font-size: 12px !important; }
-      #__chatgpt2pdf_print__ code:not(pre code) { background: #f0f0f0 !important; border-radius: 3px !important;
-        padding: 2px 5px !important; font-family: "Courier New", Consolas, monospace !important;
-        font-size: 12px !important; color: #c7254e !important; }
-      #__chatgpt2pdf_print__ blockquote { border-left: 4px solid #10a37f !important; margin: 10px 0 !important;
-        padding: 8px 16px !important; background: #f0faf7 !important; color: #444 !important; }
-      #__chatgpt2pdf_print__ a { color: #10a37f !important; text-decoration: underline !important; }
-      #__chatgpt2pdf_print__ th { background: #f5f5f5 !important; font-weight: 600 !important; }
-      #__chatgpt2pdf_print__ table { border-collapse: collapse !important; width: 100% !important; margin: 12px 0 !important; }
-      #__chatgpt2pdf_print__ th, #__chatgpt2pdf_print__ td { border: 1px solid #ddd !important; padding: 7px 12px !important; }
-      #__chatgpt2pdf_print__ img { max-width: 100% !important; height: auto !important;
-        border-radius: 8px !important; display: block !important; }
-    `;
-    doc.head.appendChild(style);
-  };
-
-  for (let i = 0; i < turnDivs.length; i++) {
-    if (_cancelled) break;
-    const div = turnDivs[i];
-    try {
-      const c = await html2canvas(div, {
-        scale: 2, useCORS: false, allowTaint: true,
-        backgroundColor: '#ffffff', logging: false,
-        onclone: oncloneSafeCSS
-      });
-      // 检查透明 canvas，叠加白底
-      if (c.width > 0 && c.height > 0) {
-        const ctx = c.getContext('2d');
-        if (ctx) {
-          const s = ctx.getImageData(Math.floor(c.width / 2), Math.min(10, Math.floor(c.height / 2)), 1, 1).data;
-          if (s[3] < 10) {
-            const wbg = document.createElement('canvas');
-            wbg.width = c.width; wbg.height = c.height;
-            const wc = wbg.getContext('2d');
-            wc.fillStyle = '#ffffff'; wc.fillRect(0, 0, wbg.width, wbg.height);
-            wc.drawImage(c, 0, 0);
-            sectionCanvases.push(wbg);
-          } else {
-            sectionCanvases.push(c);
-          }
+      // ★ 替换原始位置的 img src 为已下载的 base64（并压缩）
+      const imgs = Array.from(contentDiv.querySelectorAll('img[data-cg2p-src]'));
+      const placedImageURLs = new Set();
+      for (const img of imgs) {
+        const src = img.getAttribute('data-cg2p-src');
+        if (placedImageURLs.has(src)) {
+          img.remove();
+          continue;
+        }
+        const base64 = imageBase64Map.get(src);
+        if (!base64) throw new Error(`${_('imageLoadFailed')}: ${src.substring(0, 80)}`);
+        try {
+          replaceImageWithCleanBlock(img, await createCompressedImage(base64), contentDiv);
+          placedImageURLs.add(src);
+          totalImagesAdded++;
+        } catch (err) {
+          console.warn('[ChatGPT2PDF] 图片处理失败:', src.substring(0, 60), err.message);
+          throw new Error(`${_('imageLoadFailed')}: ${src.substring(0, 80)}`);
         }
       }
-      if (i % 5 === 0) notifyProgress(`渲染中 ${i + 1}/${turnDivs.length} 段...`);
-    } catch (err) {
-      console.warn(`[ChatGPT2PDF] 第 ${i + 1} 段渲染失败（跳过）:`, err.message);
-      // 跳过失败段，不影响其他
+
+      // background-image 或无法映射到原位置的图片，追加到当前消息末尾，确保不丢图
+      for (const src of imageURLs) {
+        if (placedImageURLs.has(src)) continue;
+        const base64 = imageBase64Map.get(src);
+        if (!base64) throw new Error(`${_('imageLoadFailed')}: ${src.substring(0, 80)}`);
+        const imgDiv = document.createElement('div');
+        imgDiv.className = 'cg2p-image-block';
+        imgDiv.dataset.cg2pImageBlock = 'true';
+        imgDiv.style.cssText = 'display:block;width:100%;height:auto;min-height:0;max-height:none;margin:10px 0;padding:0;position:static;transform:none;aspect-ratio:auto;overflow:visible;';
+        try {
+          imgDiv.appendChild(await createCompressedImage(base64));
+          contentDiv.appendChild(imgDiv);
+          totalImagesAdded++;
+        } catch (err) {
+          console.warn('[ChatGPT2PDF] 图片处理失败:', src.substring(0, 60), err.message);
+          throw new Error(`${_('imageLoadFailed')}: ${src.substring(0, 80)}`);
+        }
+      }
+
+      applyInlineStyles(contentDiv);
+      turnDiv.appendChild(contentDiv);
+    } else if (hasImages) {
+      // 纯图片回复（无文本）：按顺序添加图片
+      for (const src of imageURLs) {
+        const base64 = imageBase64Map.get(src);
+        if (!base64) throw new Error(`${_('imageLoadFailed')}: ${src.substring(0, 80)}`);
+        const imgDiv = document.createElement('div');
+        imgDiv.className = 'cg2p-image-block';
+        imgDiv.dataset.cg2pImageBlock = 'true';
+        imgDiv.style.cssText = 'display:block;width:100%;height:auto;min-height:0;max-height:none;margin:10px 0;padding:0;position:static;transform:none;aspect-ratio:auto;overflow:visible;';
+        try {
+          imgDiv.appendChild(await createCompressedImage(base64));
+          totalImagesAdded++;
+        } catch (err) {
+          console.warn('[ChatGPT2PDF] 图片处理失败:', src.substring(0, 60), err.message);
+          throw new Error(`${_('imageLoadFailed')}: ${src.substring(0, 80)}`);
+        }
+        turnDiv.appendChild(imgDiv);
+      }
     }
+
+    turnDivs.push(turnDiv);
   }
 
-  console.log(`[ChatGPT2PDF] 逐段渲染完成: ${sectionCanvases.length}/${turnDivs.length} 段成功`);
-  wrapper.remove();
-  return sectionCanvases; // ★ 返回 canvas 数组
+  if (totalImagesAdded !== expectedImageCount) {
+    throw new Error(`图片完整性校验失败：应导出 ${expectedImageCount} 张，实际处理 ${totalImagesAdded} 张`);
+  }
+  assertCompleteRender(sorted.map(([id]) => id), turnDivs.map(div => div.dataset.cg2pTurnId));
+  console.log(`[ChatGPT2PDF] 构建完成: ${turnDivs.length} 个章节, ${totalImagesAdded} 张图片`);
+  notifyProgress(_('docBuilt', [String(turnDivs.length), String(totalImagesAdded)]));
+
+  return createSelectableReadDocument(turnDivs);
+}
+
+async function createSelectableReadDocument(turnDivs) {
+  const oldDocument = document.getElementById('__chatgpt2pdf_read_document__');
+  if (oldDocument) oldDocument.remove();
+  document.getElementById('__chatgpt2pdf_read_print_css__')?.remove();
+
+  const readDocument = document.createElement('main');
+  readDocument.id = '__chatgpt2pdf_read_document__';
+  readDocument.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:#fff;color:#1a1a1a;padding:20px 36px;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.65;';
+
+  turnDivs.forEach(turn => {
+    const clone = turn.cloneNode(true);
+    clone.classList.add('cg2p-turn');
+    clone.style.removeProperty('height');
+    clone.style.removeProperty('min-height');
+    clone.style.removeProperty('max-height');
+    clone.style.removeProperty('position');
+    clone.style.removeProperty('transform');
+    clone.querySelectorAll('*').forEach(el => {
+      if (el.tagName !== 'IMG') {
+        el.style.removeProperty('height');
+        el.style.removeProperty('min-height');
+        el.style.removeProperty('max-height');
+      }
+      el.style.removeProperty('position');
+      el.style.removeProperty('top');
+      el.style.removeProperty('right');
+      el.style.removeProperty('bottom');
+      el.style.removeProperty('left');
+      el.style.removeProperty('transform');
+      el.style.removeProperty('translate');
+      el.style.removeProperty('flex');
+      el.style.removeProperty('flex-grow');
+      el.style.removeProperty('flex-basis');
+      el.style.removeProperty('align-self');
+      el.style.removeProperty('margin-top');
+      el.style.removeProperty('margin-bottom');
+    });
+    readDocument.appendChild(clone);
+  });
+
+  stripOklchColors(readDocument);
+    forceWhiteBackground(readDocument);
+    Array.from(readDocument.children).forEach(turn => turn.classList.add('cg2p-turn'));
+    readDocument.querySelectorAll('[data-cg2p-image-block="true"]').forEach(block => block.classList.add('cg2p-image-block'));
+  document.body.appendChild(readDocument);
+
+  const printStyle = document.createElement('style');
+  printStyle.id = '__chatgpt2pdf_read_print_css__';
+  printStyle.textContent = `
+    @media print {
+      @page { size: A4; margin: 12mm 12mm 14mm; }
+      html, body { background: #fff !important; color: #1a1a1a !important; margin: 0 !important; padding: 0 !important; }
+      body > *:not(#__chatgpt2pdf_read_document__) { display: none !important; }
+      #__chatgpt2pdf_read_document__ {
+        display: block !important; position: static !important; width: auto !important;
+        margin: 0 !important; padding: 0 !important; overflow: visible !important;
+      }
+      #__chatgpt2pdf_read_document__ .cg2p-turn {
+        display: block !important; position: static !important; height: auto !important;
+        min-height: 0 !important; max-height: none !important; margin: 0 0 12pt !important;
+        padding: 0 0 10pt !important; break-before: auto !important; break-after: auto !important;
+        page-break-before: auto !important; page-break-after: auto !important; break-inside: auto !important;
+      }
+      #__chatgpt2pdf_read_document__ .cg2p-turn *:not(img) {
+        position: static !important; height: auto !important; min-height: 0 !important; max-height: none !important;
+        transform: none !important; translate: none !important; flex-grow: 0 !important; flex-basis: auto !important;
+      }
+      #__chatgpt2pdf_read_document__ p,
+      #__chatgpt2pdf_read_document__ li,
+      #__chatgpt2pdf_read_document__ blockquote { orphans: 2; widows: 2; }
+      #__chatgpt2pdf_read_document__ pre,
+      #__chatgpt2pdf_read_document__ table { break-inside: auto !important; page-break-inside: auto !important; }
+      #__chatgpt2pdf_read_document__ img {
+        display: block !important; position: static !important; max-width: 100% !important;
+        max-height: 245mm !important; width: auto !important; height: auto !important;
+        margin: 8pt auto !important; object-fit: contain !important; break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+      #__chatgpt2pdf_read_document__ .cg2p-image-block,
+      #__chatgpt2pdf_read_document__ .cg2p-image-block * {
+        position: static !important; width: auto !important; height: auto !important;
+        min-height: 0 !important; max-height: none !important; aspect-ratio: auto !important;
+        padding-top: 0 !important; padding-bottom: 0 !important; transform: none !important;
+        flex: none !important; overflow: visible !important;
+      }
+      #__chatgpt2pdf_read_document__ .cg2p-image-block {
+        display: block !important; width: 100% !important; margin: 8pt 0 !important; padding: 0 !important;
+      }
+    }
+  `;
+  document.head.appendChild(printStyle);
+
+  await document.fonts?.ready;
+  await sleep(300);
+  const estimatedPages = Math.max(1, Math.ceil(readDocument.scrollHeight / 1030));
+  notifyProgress(_('savingFile'));
+
+  if (_overlayEl) _overlayEl.style.display = 'none';
+  try {
+    window.print();
+  } finally {
+    if (_overlayEl) _overlayEl.style.display = '';
+    printStyle.remove();
+    readDocument.remove();
+  }
+
+  return { selectable: true, pages: estimatedPages };
 }
 
 // ─────────────────────────────────────────────
@@ -980,6 +1134,13 @@ async function exportByScreenshotMode() {
     main p.text-xs.text-gray-500 { display:none !important; }
     /* 隐藏举报按钮 */
     main div.text-center.text-xs.font-semibold { display:none !important; }
+    /* 隐藏底部免责声明 */
+    main div[class*="text-xs"][class*="text-center"],
+    main p[class*="text-xs"][class*="text-center"],
+    main > div:last-child [class*="text-xs"],
+    main > div:last-of-type [class*="text-xs"] {
+      display:none !important;
+    }
     /* 隐藏浮动 tooltip/popover */
     [role="tooltip"], [data-radix-popper-content-wrapper] {
       display:none !important;
@@ -988,6 +1149,38 @@ async function exportByScreenshotMode() {
     #google-one-tap-anchor { display:none !important; }
   `;
   document.head.appendChild(hideStyle);
+
+  // ★ JS 精确隐藏底部输入框/Composer（避免 CSS 误伤内容）
+  const hiddenComposers = [];
+  {
+    const composerSelectors = [
+      'form[data-testid*="composer"]',
+      'form[data-testid*="prompt"]',
+      '[data-testid*="composer"]',
+      '[data-testid="composer-container"]',
+      '[data-testid="composer-root"]',
+      '#prompt-textarea',
+      'main > div:last-child form',
+      'main > div:last-of-type form',
+      'footer form',
+    ];
+    const candidates = new Set();
+    composerSelectors.forEach(sel => {
+      try {
+        document.querySelectorAll(sel).forEach(el => candidates.add(el));
+      } catch (e) { /* 忽略非法选择器 */ }
+    });
+    const viewportH = window.innerHeight;
+    candidates.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      // 只隐藏位于视口底部 35% 区域内的元素
+      if (rect.top > viewportH * 0.65) {
+        el.style.setProperty('display', 'none', 'important');
+        hiddenComposers.push(el);
+        console.log(`[ChatGPT2PDF] 隐藏底部输入框: ${el.tagName}.${(el.className||'').toString().substring(0,40)} top=${Math.round(rect.top)}`);
+      }
+    });
+  }
 
   // ★ JS 兑底：逐级遍历 main 的祖先元素，隐藏所有同级的侧边栏元素
   const hiddenSiblings = [];
@@ -1032,7 +1225,7 @@ async function exportByScreenshotMode() {
       'useWindow:', useWindow, 'viewH:', viewHeight, 'totalH:', totalScrollH);
 
     // 滚动到顶部
-    notifyProgress('正在滚动到对话开头...');
+    notifyProgress(_('rollingToTop'));
     const scrollTo = (y) => {
       if (useWindow) window.scrollTo(0, y);
       else container.scrollTop = y;
@@ -1056,7 +1249,7 @@ async function exportByScreenshotMode() {
 
     if (viewHeight <= 50) {
       console.error('[ChatGPT2PDF] 视口过小', { viewHeight });
-      notifyProgress('截图模式失败：视口尺寸异常');
+      notifyProgress(_('screenshotViewportError'));
       return [];
     }
 
@@ -1065,10 +1258,11 @@ async function exportByScreenshotMode() {
     // 即使页面已完全展开（不需要滚动），也至少截一屏
     if (maxScrollInitial <= 0) {
       console.warn('[ChatGPT2PDF] 页面已完全展开（无需滚动），只截一屏');
-      if (_overlayEl) _overlayEl.style.visibility = 'hidden';
-      await sleep(100);
+      if (_overlayEl) _overlayEl.style.display = 'none';
+      await sleep(150);
       const raw = await captureTab();
-      if (_overlayEl) _overlayEl.style.visibility = 'visible';
+      if (_overlayEl) _overlayEl.style.display = '';
+      await sleep(50);
       const cropped = await cropScreenshot(raw);
       screenshots.push(cropped);
       return screenshots;
@@ -1080,11 +1274,12 @@ async function exportByScreenshotMode() {
       scrollTo(pos);
       await sleep(700);
 
-      if (_overlayEl) _overlayEl.style.visibility = 'hidden';
-      await sleep(100);
+      if (_overlayEl) _overlayEl.style.display = 'none';
+      await sleep(150);
 
       const raw = await captureTab();
-      if (_overlayEl) _overlayEl.style.visibility = 'visible';
+      if (_overlayEl) _overlayEl.style.display = '';
+      await sleep(50);
 
       const cropped = await cropScreenshot(raw);
       screenshots.push(cropped);
@@ -1097,7 +1292,7 @@ async function exportByScreenshotMode() {
 
       console.log(`[ChatGPT2PDF] 截图 #${screenshots.length}: pos=${pos}, actualTop=${actualScrollTop}, maxScroll=${currentMaxScroll}, totalH=${currentTotalH}`);
 
-      notifyProgress(`已截图第 ${screenshots.length} 屏...`);
+      notifyProgress(_('screenshotProgress', [String(screenshots.length)]));
 
       if (actualScrollTop >= currentMaxScroll - 5) break;
       if (actualScrollTop === lastScrollTop) {
@@ -1115,6 +1310,10 @@ async function exportByScreenshotMode() {
     // 恢复隐藏的侧边栏
     for (const s of hiddenSiblings) {
       s.style.removeProperty('display');
+    }
+    // 恢复隐藏的底部输入框
+    for (const c of hiddenComposers) {
+      c.style.removeProperty('display');
     }
   }
 }
@@ -1337,13 +1536,14 @@ async function exportToPDF(mode) {
   ensureLibs();
 
   // 显示页面浮动进度条
-  showOverlay('正在准备导出...');
+  showOverlay(_('preparingExport'));
 
-  notifyProgress('正在准备导出...');
+  notifyProgress(_('preparingExport'));
   const title = getConversationTitle();
   const filename = sanitizeFilename(title) + '.pdf';
 
   const { jsPDF } = window.jspdf;
+
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
 
   const PAGE_W = 210, PAGE_H = 297, MARGIN = 10;
@@ -1381,12 +1581,12 @@ async function exportToPDF(mode) {
       const screenshots = await exportByScreenshotMode();
       if (_cancelled || !screenshots.length) return { filename: '', pages: 0 };
 
-      notifyProgress(`正在拼接 PDF (${screenshots.length} 页)...`);
+      notifyProgress(_('assemblingPDF', [String(screenshots.length)]));
 
-      // ★ 标准 A4 竖版页面，截图按比例缩放适配
+      // ★ 标准 A4 横版页面，截图按比例缩放适配
       const ssPageW = 297; // A4 横版宽度（mm）
       const ssPageH = 210; // A4 横版高度（mm）
-      const ssPdf = new jsPDF({ unit: 'mm', format: [ssPageW, ssPageH], compress: true });
+      const ssPdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
 
       // 计算截图在 A4 页面上的显示尺寸（保证不超出页面）
       const firstDims = await getImageDimensions(screenshots[0]);
@@ -1409,7 +1609,7 @@ async function exportToPDF(mode) {
 
       for (let i = 0; i < screenshots.length; i++) {
         if (_cancelled) return { filename: '', pages: 0 };
-        if (i > 0) ssPdf.addPage([ssPageW, ssPageH]);
+        if (i > 0) ssPdf.addPage('a4', 'landscape');
 
         // 截图按比例缩放，居中放置
         ssPdf.addImage(screenshots[i], 'PNG', imgX, imgY, imgW, imgH);
@@ -1422,7 +1622,7 @@ async function exportToPDF(mode) {
         pageNum++;
       }
 
-      notifyProgress('正在保存文件...');
+      notifyProgress(_('savingFile'));
       const ssBlob = ssPdf.output('blob');
       const ssUrl = URL.createObjectURL(ssBlob);
       const ssLink = document.createElement('a');
@@ -1431,45 +1631,22 @@ async function exportToPDF(mode) {
       showOverlayResult(filename, pageNum - 1);
       return { filename, pages: pageNum - 1 };
     } else {
-      // ── 直读模式：逐段 canvas 分页 ──
-      const sectionCanvases = await exportByReadMode();
-      if (_cancelled || !sectionCanvases || !sectionCanvases.length) return { filename: '', pages: 0 };
-      notifyProgress(`正在分页 (${sectionCanvases.length} 段)...`);
-
-      for (const canvas of sectionCanvases) {
-        if (_cancelled) break;
-        const canvasW = canvas.width, canvasH = canvas.height;
-        const pageCanvasH = (PRINTABLE_H / CONTENT_W) * canvasW;
-        let yOffset = 0;
-
-        while (yOffset < canvasH) {
-          if (!isFirst) pdf.addPage();
-          isFirst = false;
-          addHeader(pageNum);
-
-          const sliceH = Math.min(pageCanvasH, canvasH - yOffset);
-          const slicePdfH = (sliceH / canvasW) * CONTENT_W;
-
-          const sliceCanvas = document.createElement('canvas');
-          sliceCanvas.width = canvasW;
-          sliceCanvas.height = Math.ceil(sliceH);
-          sliceCanvas.getContext('2d').drawImage(canvas, 0, yOffset, canvasW, sliceH, 0, 0, canvasW, sliceH);
-
-          pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', MARGIN, HEADER_H, CONTENT_W, slicePdfH);
-          addFooter();
-
-          yOffset += sliceH;
-          pageNum++;
-        }
-      }
+      // ── 直读模式：重建连续 HTML，由浏览器生成带可复制文字层的 PDF ──
+      const readResult = await exportByReadMode();
+      if (_cancelled || !readResult) return { filename: '', pages: 0 };
+      showOverlayResult('✓ ' + _('exportComplete', [String(readResult.pages)]));
+      notifyProgress('');
+      return { filename, pages: readResult.pages };
     }
   } catch (err) {
     // ★ 确保出错时清理
     const wrapper = document.getElementById('__chatgpt2pdf_print__');
     if (wrapper) wrapper.remove();
+    document.getElementById('__chatgpt2pdf_read_document__')?.remove();
+    document.getElementById('__chatgpt2pdf_read_print_css__')?.remove();
     const hide = document.getElementById('__chatgpt2pdf_hide__');
     if (hide) hide.remove();
-    showOverlayError(err.message || '导出失败');
+    showOverlayError(err.message || _('exportFailedShort'));
     throw err;
   }
 
@@ -1480,7 +1657,7 @@ async function exportToPDF(mode) {
   a.href = url; a.download = filename; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 
-  showOverlayResult(`✓ 导出完成！共 ${pageNum - 1} 页`);
+  showOverlayResult('✓ ' + _('exportComplete', [String(pageNum - 1)]));
   notifyProgress('');
 
   return { filename, pages: pageNum - 1 };

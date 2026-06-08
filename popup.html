@@ -20,14 +20,14 @@
       </div>
       <div class="header-text">
         <h1>ChatGPT to PDF</h1>
-        <p class="subtitle">一键导出对话为 PDF</p>
+        <p class="subtitle">__MSG_subtitle__</p>
       </div>
     </div>
 
     <!-- 页面信息 -->
     <div class="page-info" id="pageInfo">
-      <div class="page-title-label">当前对话</div>
-      <div class="page-title" id="pageTitle">加载中...</div>
+      <div class="page-title-label">__MSG_currentConversation__</div>
+      <div class="page-title" id="pageTitle">__MSG_loading__</div>
       <div class="page-url" id="pageUrl"></div>
     </div>
 
@@ -37,26 +37,26 @@
         <circle cx="12" cy="12" r="10" stroke="#ff9800" stroke-width="2"/>
         <path d="M12 7v6M12 17v.01" stroke="#ff9800" stroke-width="2" stroke-linecap="round"/>
       </svg>
-      <p>请在 ChatGPT 对话页面使用此插件</p>
-      <small>支持的页面：<br>chatgpt.com/c/... （自有对话）<br>chatgpt.com/share/... （分享对话）</small>
+      <p>__MSG_unsupportedMsg__</p>
+      <small>__MSG_supportedPages__<br>chatgpt.com/c/... __MSG_ownConversation__<br>chatgpt.com/g/.../c/... __MSG_ownConversation__<br>chatgpt.com/share/... __MSG_sharedConversation__</small>
     </div>
 
     <!-- 模式选择 -->
     <div class="mode-selector" id="modeSelector">
       <label class="mode-option">
-        <input type="radio" name="exportMode" value="read" checked>
-        <span class="mode-label">直读模式</span>
-        <span class="mode-desc">高清文字+原图</span>
+        <input type="radio" name="exportMode" value="screenshot" checked>
+        <span class="mode-label">__MSG_modeScreenshot__</span>
+        <span class="mode-desc">__MSG_modeScreenshotDesc__</span>
       </label>
       <label class="mode-option">
-        <input type="radio" name="exportMode" value="screenshot">
-        <span class="mode-label">截图模式</span>
-        <span class="mode-desc">所见即所得</span>
+        <input type="radio" name="exportMode" value="read">
+        <span class="mode-label">__MSG_modeRead__</span>
+        <span class="mode-desc">__MSG_modeReadDesc__</span>
       </label>
       <label class="mode-option">
         <input type="radio" name="exportMode" value="print">
-        <span class="mode-label">打印模式</span>
-        <span class="mode-desc">浏览器原生 PDF</span>
+        <span class="mode-label">__MSG_modePrint__</span>
+        <span class="mode-desc">__MSG_modePrintDesc__</span>
       </label>
     </div>
 
@@ -68,11 +68,11 @@
           <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </svg>
       </span>
-      <span class="btn-text">导出为 PDF</span>
+      <span class="btn-text">__MSG_exportBtn__</span>
     </button>
 
     <!-- 取消按钮（导出时显示） -->
-    <button class="cancel-btn" id="cancelBtn" style="display:none;">取消导出</button>
+    <button class="cancel-btn" id="cancelBtn" style="display:none;">__MSG_cancelBtn__</button>
 
     <!-- 状态提示 -->
     <div class="status" id="status" style="display:none;">

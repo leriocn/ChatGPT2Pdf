@@ -3,6 +3,30 @@
  * Developer: Jeffer SU
  */
 
+const _ = chrome.i18n.getMessage;
+
+// 自动替换 popup.html 中的 __MSG_*__ 占位符
+function localizeHtml() {
+  // 替换文本节点
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+  const nodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node.nodeValue.includes('__MSG_')) nodes.push(node);
+  }
+  nodes.forEach(n => {
+    n.nodeValue = n.nodeValue.replace(/__MSG_(\w+)__/g, (m, key) => chrome.i18n.getMessage(key) || m);
+  });
+  // 替换属性
+  document.querySelectorAll('[placeholder*="__MSG_"]').forEach(el => {
+    el.placeholder = el.placeholder.replace(/__MSG_(\w+)__/g, (m, key) => chrome.i18n.getMessage(key) || m);
+  });
+  document.querySelectorAll('[title*="__MSG_"]').forEach(el => {
+    el.title = el.title.replace(/__MSG_(\w+)__/g, (m, key) => chrome.i18n.getMessage(key) || m);
+  });
+}
+localizeHtml();
+
 const exportBtn = document.getElementById('exportBtn');
 const cancelBtn = document.getElementById('cancelBtn');
 const pageTitle = document.getElementById('pageTitle');
@@ -25,7 +49,7 @@ async function init() {
     if (!tab) return;
 
     const url = tab.url || '';
-    const isSupported = url.includes('chatgpt.com/c/') || url.includes('chatgpt.com/share/');
+    const isSupported = url.includes('chatgpt.com/c/') || url.includes('chatgpt.com/share/') || /chatgpt\.com\/g\/[^/]+\/c\//.test(url);
 
     if (!isSupported) {
       pageInfo.style.display = 'none';
@@ -35,13 +59,13 @@ async function init() {
     }
 
     // 显示 URL 类型
-    const urlType = url.includes('/share/') ? '（分享对话）' : '（自有对话）';
+    const urlType = url.includes('/share/') ? _('urlTypeShare') : _('urlTypeOwn');
 
     // 向 content.js 获取页面信息
     try {
       const response = await sendMessageToTab(tab.id, { action: 'getPageInfo' });
       if (response) {
-        pageTitle.textContent = response.title || tab.title || '未知标题';
+        pageTitle.textContent = response.title || tab.title || _('unknownTitle');
         pageUrl.textContent = shortenUrl(url) + ' ' + urlType;
         exportBtn.disabled = false;
       } else {
@@ -49,25 +73,25 @@ async function init() {
         await injectContentScript(tab.id);
         const retryResp = await sendMessageToTab(tab.id, { action: 'getPageInfo' });
         if (retryResp) {
-          pageTitle.textContent = retryResp.title || tab.title || '未知标题';
+          pageTitle.textContent = retryResp.title || tab.title || _('unknownTitle');
           pageUrl.textContent = shortenUrl(url) + ' ' + urlType;
           exportBtn.disabled = false;
         } else {
-          pageTitle.textContent = tab.title?.replace(/\s*[-–|]\s*ChatGPT\s*$/i, '') || '当前对话';
+          pageTitle.textContent = tab.title?.replace(/\s*[-–|]\s*ChatGPT\s*$/i, '') || _('currentConversationShort');
           pageUrl.textContent = shortenUrl(url) + ' ' + urlType;
           exportBtn.disabled = false;
         }
       }
     } catch (e) {
       // content script 未就绪，直接用 tab.title
-      pageTitle.textContent = tab.title?.replace(/\s*[-–|]\s*ChatGPT\s*$/i, '') || '当前对话';
+      pageTitle.textContent = tab.title?.replace(/\s*[-–|]\s*ChatGPT\s*$/i, '') || _('currentConversationShort');
       pageUrl.textContent = shortenUrl(url) + ' ' + urlType;
       exportBtn.disabled = false;
     }
 
   } catch (err) {
     console.error('[ChatGPT2PDF Popup] 初始化失败:', err);
-    pageTitle.textContent = '初始化失败';
+    pageTitle.textContent = _('initFailed');
     exportBtn.disabled = true;
   }
 }
@@ -101,7 +125,7 @@ async function injectContentScript(tabId) {
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
-      files: ['libs/html2canvas.min.js', 'libs/jspdf.umd.min.js', 'content.js']
+      files: ['libs/html2canvas.min.js', 'libs/jspdf.umd.min.js', 'read-mode-core.js', 'content.js']
     });
     await new Promise(resolve => setTimeout(resolve, 500));
   } catch (e) {
@@ -186,12 +210,12 @@ chrome.runtime.onMessage.addListener((message) => {
  */
 exportBtn.addEventListener('click', async () => {
   try {
-    const mode = document.querySelector('input[name="exportMode"]:checked')?.value || 'read';
-    showStatus('正在连接页面...');
+    const mode = document.querySelector('input[name="exportMode"]:checked')?.value || 'screenshot';
+    showStatus(_('connectingPage'));
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) {
-      showError('无法获取当前标签页');
+      showError(_('cannotGetTab'));
       return;
     }
 
@@ -200,42 +224,42 @@ exportBtn.addEventListener('click', async () => {
       // 确保 content script 已注入
       let testResp = await sendMessageToTab(tab.id, { action: 'getPageInfo' });
       if (!testResp) {
-        showStatus('正在注入脚本...');
+        showStatus(_('injectingScript'));
         await injectContentScript(tab.id);
       }
       // 通过 background 发送命令，popup 即将关闭
       chrome.runtime.sendMessage({ action: 'startExport', tabId: tab.id, mode });
-      showStatus('截图模式已启动，请等待完成...');
+      showStatus(_('screenshotStarted'));
       // 关闭 popup，让浏览器页面完全可见
       setTimeout(() => window.close(), 300);
       return;
     }
 
     // 直读模式：popup 保持打开
-    let response = await sendMessageToTab(tab.id, { action: 'exportPDF', mode }, 120000);
+    let response = await sendMessageToTab(tab.id, { action: 'exportPDF', mode }, 600000);
 
     if (response === null) {
       // content script 未响应，尝试注入后重试
-      showStatus('正在注入脚本...');
+      showStatus(_('injectingScript'));
       await injectContentScript(tab.id);
-      response = await sendMessageToTab(tab.id, { action: 'exportPDF', mode }, 120000);
+      response = await sendMessageToTab(tab.id, { action: 'exportPDF', mode }, 600000);
     }
 
     if (response === null) {
-      showError('页面响应超时，请刷新页面后重试');
+      showError(_('pageTimeout'));
       return;
     }
 
     if (response.success) {
       const pages = response.pages || 1;
-      showSuccess(`导出成功！共 ${pages} 页 → ${response.filename}`);
+      showSuccess(_('exportSuccess', [String(pages), response.filename]));
     } else {
-      showError('导出失败：' + (response.error || '未知错误'));
+      showError(_('exportFailed', [response.error || _('unknownError')]));
     }
 
   } catch (err) {
     console.error('[ChatGPT2PDF Popup] 导出出错:', err);
-    showError('发生错误：' + err.message);
+    showError(_('errorOccurred', [err.message]));
   }
 });
 
@@ -251,5 +275,5 @@ cancelBtn.addEventListener('click', async () => {
     chrome.tabs.sendMessage(tab.id, { action: 'cancelExport' });
   }
   cancelBtn.style.display = 'none';
-  showError('导出已取消');
+  showError(_('exportCancelled'));
 });

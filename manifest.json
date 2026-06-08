@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "ChatGPT to PDF",
+  "name": "__MSG_appName__",
   "version": "1.0.0",
-  "description": "将 ChatGPT 对话（含图片）一键导出为 PDF 文件，支持自有对话和分享对话。",
+  "description": "__MSG_appDesc__",
+  "default_locale": "zh_CN",
   "homepage_url": "https://github.com/leriocn/ChatGPT2Pdf",
   "author": "Jeffer SU",
   "icons": {
@@ -17,7 +18,7 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     },
-    "default_title": "导出 ChatGPT 对话为 PDF"
+    "default_title": "__MSG_appTitle__"
   },
   "permissions": [
     "activeTab",
@@ -35,11 +36,13 @@
     {
       "matches": [
         "https://chatgpt.com/c/*",
-        "https://chatgpt.com/share/*"
+        "https://chatgpt.com/share/*",
+        "https://chatgpt.com/g/*/c/*"
       ],
       "js": [
         "libs/html2canvas.min.js",
         "libs/jspdf.umd.min.js",
+        "read-mode-core.js",
         "content.js"
       ],
       "run_at": "document_idle"
